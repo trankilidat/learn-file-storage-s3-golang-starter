@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -47,19 +49,27 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	defer file.Close()
 
 	mediaType := header.Header.Get("Content-Type")
+	extensions, err := mime.ExtensionsByType(mediaType)
+	if err != nil || len(extensions) == 0 {
+		respondWithError(w, http.StatusBadRequest, "Could not determine file extension from media type", err)
+		return
+	}
+	ext := extensions[0] // e.g. ".png"
 
-	fmt.Println("mediatype", mediaType)
+	videoPath := fmt.Sprintf(`%s.%s`, videoID, ext)
+	path := filepath.Join(cfg.assetsRoot, videoPath)
 
-	// read image into byte slice
-	imgSlice, err := io.ReadAll(file)
+	fl, err := os.Create(path)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Unable to read image data into byte slice", err)
+		respondWithError(w, http.StatusBadRequest, "Unable to create file", err)
 		return
 	}
 
-	// base64 encode image so we can store it as text in db
-	encodedImage := base64.StdEncoding.EncodeToString(imgSlice)
-	dataURL := fmt.Sprintf(`data:%s;base64,%s`, mediaType, encodedImage)
+	_, err = io.Copy(fl, file)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to copy file to file system", err)
+		return
+	}
 
 	// get video metadata
 	vm, err := cfg.db.GetVideo(videoID)
@@ -73,8 +83,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// add dataurl in thumnail url to video metadata
-	vm.ThumbnailURL = &dataURL
+	tnu := fmt.Sprintf(`http://localhost:8091/assets/%s`, videoPath)
+	vm.ThumbnailURL = &tnu
 
 	// update video with new thumbnail url
 	if err := cfg.db.UpdateVideo(vm); err != nil {
