@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -56,6 +57,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// base64 encode image so we can store it as text in db
+	encodedImage := base64.StdEncoding.EncodeToString(imgSlice)
+	dataURL := fmt.Sprintf(`data:%s;base64,%s`, mediaType, encodedImage)
+
 	// get video metadata
 	vm, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -68,19 +73,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// add to global map
-	tn := thumbnail{
-		data:      imgSlice,
-		mediaType: mediaType,
-	}
-
-	videoThumbnails[vm.ID] = tn
-
-	// add thumnail url to video metadata
-	tnu := fmt.Sprintf(`http://localhost:8091/api/thumbnails/{%s}`, vm.ID.String())
-	vm.ThumbnailURL = &tnu
-
-	fmt.Printf("\n video %+v", vm)
+	// add dataurl in thumnail url to video metadata
+	vm.ThumbnailURL = &dataURL
 
 	// update video with new thumbnail url
 	if err := cfg.db.UpdateVideo(vm); err != nil {
