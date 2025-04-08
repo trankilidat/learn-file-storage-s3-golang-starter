@@ -48,7 +48,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	mediaType := header.Header.Get("Content-Type")
+	mediaType, _, _ := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if mediaType != "image/jpeg" ||
+		mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Unsupported media type", err)
+		return
+	}
+
 	extensions, err := mime.ExtensionsByType(mediaType)
 	if err != nil || len(extensions) == 0 {
 		respondWithError(w, http.StatusBadRequest, "Could not determine file extension from media type", err)
